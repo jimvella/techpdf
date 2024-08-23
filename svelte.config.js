@@ -22,6 +22,10 @@ const config = {
       fallback: undefined,
       precompress: false,
       strict: true,
+      trailingSlash: "always",
+      paths: {
+        base: "/techpdf",
+      },
     }),
   },
 };
