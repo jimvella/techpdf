@@ -400,8 +400,11 @@ page <input type="number" bind:value={pageNumber} />
   {#each analysis as i, index}
     <tr
       on:click={() => {
-        selected = index;
-        console.log("calling");
+        if (selected == index) {
+          selected = undefined;
+        } else {
+          selected = index;
+        }
         doRender();
       }}
       style={selected != undefined && selected == index
