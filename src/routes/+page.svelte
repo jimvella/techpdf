@@ -21,6 +21,9 @@
   let selected = undefined;
   let analysis = [];
 
+  let categories = [];
+  let enabledCategories = {};
+
   let doRender = () => {
     console.log("Callback not yet installed");
   };
@@ -125,7 +128,6 @@
               .split(",")
               .map((j) => Number(j))
           );
-        //console.log("reference vectors", referenceVectors);
 
         reference = {
           points: referencePoints,
@@ -146,10 +148,31 @@
             };
           });
 
+        categories = [
+          ...new Set(
+            annotations
+              .filter((i) => !i.contentsObj.str.startsWith("#techpdf"))
+              .map((i) => i.contentsObj.str)
+              .filter((i) => i.includes("#"))
+              .flatMap((i) => i.split(" "))
+              .filter((i) => i.startsWith("#"))
+              .map((i) => i.replace("#", ""))
+          ),
+        ];
+
         // defer rendering untill we have annotations
         page = pages[pageNumber - 1];
       });
     }
+  }
+
+  $: {
+    console.log("categories", categories);
+    categories.forEach((i) => {
+      if (enabledCategories[i] == undefined) {
+        enabledCategories[i] = true;
+      }
+    });
   }
 
   $: {
@@ -212,51 +235,51 @@ page <input type="number" bind:value={pageNumber} />
       {page}
       style={fitToPage ? "width: 100%" : ""}
       afterRender={(context, canvas) => {
+        const viewport = page.getViewport();
+        const pdfWidth = viewport.viewBox[2];
+        const pdfHeight = viewport.viewBox[3];
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+        const isOdd = (n) => {
+          return n % 2;
+        };
+        const pdfToCanvasCoords = (points) => {
+          // Canvas origin is top left,
+          // pdf origin is bottom left
+          let result = [];
+          for (let i = 0; i < points.length; i++) {
+            if (isOdd(i)) {
+              // y
+              result.push(((pdfHeight - points[i]) * canvasHeight) / pdfHeight);
+            } else {
+              // x cord
+              result.push((points[i] * canvasWidth) / pdfWidth);
+            }
+          }
+          return result;
+        };
+
+        // m to canvas units
+        // canvas distance between reference points
+        let a = pdfToCanvasCoords(reference.points[0]);
+        let b = pdfToCanvasCoords(reference.points[1]);
+        const canvasDistance = Math.sqrt(
+          Math.pow(b[0] - a[0], 2) + Math.pow(b[1] - a[1], 2)
+        );
+
+        const pdfDistance = Math.sqrt(
+          Math.pow(reference.points[1][0] - reference.points[0][0], 2) +
+            Math.pow(reference.points[1][1] - reference.points[0][1], 2)
+        );
+
+        // meters
+        const actualDistance = dist(reference.vectors[0], reference.vectors[1]);
+
         if (selected != undefined) {
           console.log("selected", analysis[selected]);
           console.log("page", page);
 
-          const viewport = page.getViewport();
-          const pdfWidth = viewport.viewBox[2];
-          const pdfHeight = viewport.viewBox[3];
-          const canvasWidth = canvas.width;
-          const canvasHeight = canvas.height;
-          const isOdd = (n) => {
-            return n % 2;
-          };
-          const pdfToCanvasCoords = (points) => {
-            // Canvas origin is top left,
-            // pdf origin is bottom left
-            let result = [];
-            for (let i = 0; i < points.length; i++) {
-              if (isOdd(i)) {
-                // y
-                result.push(
-                  ((pdfHeight - points[i]) * canvasHeight) / pdfHeight
-                );
-              } else {
-                // x cord
-                result.push((points[i] * canvasWidth) / pdfWidth);
-              }
-            }
-            return result;
-          };
-
           let x = pdfToCanvasCoords(analysis[selected].rect);
-
-          // m to canvas units
-          // canvas distance between reference points
-          let a = pdfToCanvasCoords(reference.points[0]);
-          let b = pdfToCanvasCoords(reference.points[1]);
-          const canvasDistance = Math.sqrt(
-            Math.pow(b[0] - a[0], 2) + Math.pow(b[1] - a[1], 2)
-          );
-
-          // meters
-          const actualDistance = dist(
-            reference.vectors[0],
-            reference.vectors[1]
-          );
 
           //context.fillStyle = "rgb(0,0,255,0.2)";
           //context.fillRect(x[0], x[1], x[2] - x[0], x[3] - x[1]);
@@ -275,11 +298,61 @@ page <input type="number" bind:value={pageNumber} />
           //context.strokeStyle = "blue";
           //context.stroke();
         }
+
+        // Draw categories
+        categories.forEach((category) => {
+          if (enabledCategories[category]) {
+            console.log("drawing " + category);
+            analysis
+              .filter((i) => i.str.includes("#" + category + " "))
+              .forEach((element) => {
+                console.log("element", element);
+
+                const spec = element.str
+                  .substring(element.str.indexOf("#"))
+                  .split(" ");
+                console.log("spec", spec);
+
+                const w = element.rect[2] - element.rect[0];
+                const h = element.rect[1] - element.rect[3];
+                const r = Math.max(w, h) / 2;
+                const rm = (r / pdfDistance) * actualDistance;
+
+                let x = pdfToCanvasCoords(element.rect);
+
+                context.beginPath();
+                context.arc(
+                  (x[0] + x[2]) / 2,
+                  (x[1] + x[3]) / 2,
+                  ((rm + Number(spec[1])) / actualDistance) * canvasDistance,
+                  0,
+                  2 * Math.PI
+                );
+                context.fillStyle = spec[2];
+                context.fill();
+              });
+          }
+        });
       }}
       doRenderCallback={(f) => (doRender = f)}
     />
   </div>
 {/if}
+
+<div style="margin-bottom: 1em;">
+  {#each categories as i, index}
+    <div>
+      {i}
+      <input
+        type="checkbox"
+        bind:checked={enabledCategories[i]}
+        on:change={() => {
+          doRender();
+        }}
+      />
+    </div>
+  {/each}
+</div>
 
 <div>
   Radius (m) <input
