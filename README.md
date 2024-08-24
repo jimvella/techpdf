@@ -1,3 +1,11 @@
+https://jimvella.github.io/techpdf/
+
+## How to use
+
+Add 3 squares to the pdf in Bluebeam (the lower left corner is the reference point) with a text value of "#techpdf <lat>, <long>"
+
+The coordiates of all the other annoations in the document can then be interpolated using bayesian weights. Note that the geometry of the earth isn't considered, so the estimation gets worse as the distances get larger.
+
 ## Developing
 
 ```bash

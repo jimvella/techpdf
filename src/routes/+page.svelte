@@ -1,5 +1,4 @@
-<script>
-  import PDFViewer from "$lib/pdf/PDFViewer.svelte";
+<script lang="ts">
   import PDFPage from "$lib/pdf/PDFPage.svelte";
 
   // @ts-nocheck
@@ -10,12 +9,144 @@
 
   let pdf;
   let pages;
+  let pageNumber = 1;
+  let fitToPage = true;
+  let page;
+
+  let analysis = [];
+
+  //https://en.wikipedia.org/wiki/Haversine_formula
+  const hav = (theta) => {
+    return (1 - Math.cos((theta * Math.PI) / 180)) / 2;
+  };
+
+  const hav2 = (a, b) => {
+    const deltaLat = b[0] - a[0];
+    const deltaLong = b[1] - a[1];
+    return (
+      hav(deltaLat) +
+      Math.cos((a[0] * Math.PI) / 180) *
+        Math.cos((b[0] * Math.PI) / 180) *
+        hav(deltaLong)
+    );
+  };
+
+  const r = 6371000; //earth radius
+  const dist = (a, b) => {
+    return 2 * r * Math.asin(Math.sqrt(hav2(a, b)));
+  };
+
+  // https://codeplea.com/triangular-interpolation
+  type Point = [number, number];
+  const baycentricWeights: (p: Point, t: Point[]) => number[] = (p, t) => {
+    const w1 =
+      ((t[1][1] - t[2][1]) * (p[0] - t[2][0]) +
+        (t[2][0] - t[1][0]) * (p[1] - t[2][1])) /
+      ((t[1][1] - t[2][1]) * (t[0][0] - t[2][0]) +
+        (t[2][0] - t[1][0]) * (t[0][1] - t[2][1]));
+
+    const w2 =
+      ((t[2][1] - t[0][1]) * (p[0] - t[2][0]) +
+        (t[0][0] - t[2][0]) * (p[1] - t[2][1])) /
+      ((t[1][1] - t[2][1]) * (t[0][0] - t[2][0]) +
+        (t[2][0] - t[1][0]) * (t[0][1] - t[2][1]));
+
+    const w3 = 1 - w1 - w2;
+
+    return [w1, w2, w3];
+  };
+  type Vector = number[];
+  export const scaleV: (s: number, v: Vector) => Vector = (s, v) => {
+    let result: Vector = [];
+    for (let i = 0; i < v.length; i++) {
+      result[i] = s * v[i];
+    }
+    return result;
+  };
+  export const addV: (a: Vector, b: Vector) => Vector = (a, b) => {
+    if (a.length != b.length) {
+      throw new Error("Vectors not the same length");
+    }
+
+    let result: Vector = [];
+    for (let i = 0; i < a.length; i++) {
+      result[i] = a[i] + b[i];
+    }
+    return result;
+  };
+
+  const interpolateFromTriangle: (
+    p: Point,
+    trianglePoints: Point[],
+    triangleVectors: Vector[]
+  ) => Vector = (p, trianglePoints, triangleVectors) => {
+    const weights = baycentricWeights(p, trianglePoints);
+
+    const interpolation = addV(
+      addV(
+        scaleV(weights[0], triangleVectors[0]),
+        scaleV(weights[1], triangleVectors[1])
+      ),
+      scaleV(weights[2], triangleVectors[2])
+    );
+
+    return interpolation;
+  };
+
+  const centerOfRect = (rect) => {
+    return [(rect[0] + rect[2]) / 2, (rect[1] + rect[3]) / 2];
+  };
+
+  $: {
+    if (pages && pages[pageNumber - 1]) {
+      pages[pageNumber - 1].getAnnotations().then((annotations) => {
+        console.log("page annotations", annotations);
+
+        const referencePoints = annotations
+          .filter((i) => i.contentsObj.str.startsWith("#techpdf"))
+          .map((i) => [i.rect[0], i.rect[1]]);
+        console.log("reference points", referencePoints);
+
+        const referenceVectors = annotations
+          .filter((i) => i.contentsObj.str.startsWith("#techpdf"))
+          .map((i) =>
+            i.contentsObj.str
+              .replace("#techpdf", "")
+              .split(",")
+              .map((j) => Number(j))
+          );
+        console.log("reference vectors", referenceVectors);
+
+        analysis = annotations
+          .filter((i) => !i.contentsObj.str.startsWith("#techpdf"))
+          .map((i) => {
+            return {
+              str: i.contentsObj.str,
+              pos: interpolateFromTriangle(
+                centerOfRect(i.rect),
+                referencePoints,
+                referenceVectors
+              ),
+            };
+          });
+
+        // defer rendering untill we have annotations
+        page = pages[pageNumber - 1];
+      });
+    }
+  }
 </script>
 
 <svelte:head>
-  <title>Home</title>
-  <meta name="description" content="Svelte demo app" />
+  <title>techpdf</title>
+  <meta name="description" content="techpdf" />
 </svelte:head>
+
+<div>
+  <a href="https://github.com/jimvella/techpdf"
+    >https://github.com/jimvella/techpdf</a
+  >
+</div>
 
 <input
   type="file"
@@ -23,7 +154,6 @@
     let file = e.target.files[0];
     let fileReader = new FileReader();
     fileReader.onload = function () {
-      //Step 4:turn array buffer into typed array
       let typedarray = new Uint8Array(this.result);
 
       const loadingTask = pdfjs.getDocument(typedarray);
@@ -43,22 +173,34 @@
               return pdf.getPage(pageNumber);
             })
         ).then((i) => (pages = i));
-
-        console.log("pages", pages);
       });
     };
     //Step 3:Read the file as ArrayBuffer
     fileReader.readAsArrayBuffer(file);
   }}
 />
+page <input type="number" bind:value={pageNumber} />
+<button disabled={!fitToPage} on:click={() => (fitToPage = false)}
+  >Full Size</button
+><button disabled={fitToPage} on:click={() => (fitToPage = true)}
+  >Fit to page</button
+>
 
-<!-- {#if typedarray}
-  <PDFViewer src={typedarray} />
-{/if} -->
-
-{#if pages}
-  <PDFPage page={pages[0]}><slot />{" " + 1 + "/" + pages.length}</PDFPage>
+{#if page}
+  <div>
+    <PDFPage {page} style={fitToPage ? "width: 100%" : ""} />
+  </div>
 {/if}
+
+<table>
+  <tr><th>Description</th><th>Position</th></tr>
+  {#each analysis as i}
+    <tr>
+      <td>{i.str}</td>
+      <td>{i.pos.join(", ")}</td>
+    </tr>
+  {/each}
+</table>
 
 <style>
   section {

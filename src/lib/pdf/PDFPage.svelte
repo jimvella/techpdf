@@ -1,8 +1,6 @@
 <script lang="ts">
   import * as pdfjs from "pdfjs-dist";
 
-  console.log("page");
-
   //https://en.wikipedia.org/wiki/Haversine_formula
   const hav = (theta) => {
     return (1 - Math.cos((theta * Math.PI) / 180)) / 2;
@@ -80,6 +78,7 @@
 
   //export let promise: Promise<pdfjs.PDFPageProxy>;
   export let page: pdfjs.PDFPageProxy;
+  export let style = "";
 
   let canvas;
 
@@ -202,19 +201,20 @@
   }
 </script>
 
-<div class="pageContainer" style="text-align: center;">
+<!-- <div class="pageContainer" style="text-align: center;">
   <div>
     <div style="position: absolute;">
       <slot />
     </div>
-    {#if page}
-      <!-- <canvas bind:this={canvas} style="width: 100%; height: auto;" /> -->
-      <canvas bind:this={canvas} />
-    {:else}
+    {#if page} -->
+<!-- <canvas bind:this={canvas} style="width: 100%; height: auto;" /> -->
+<canvas bind:this={canvas} {style} />
+
+<!-- {:else}
       Loading...
     {/if}
   </div>
-</div>
+</div> -->
 
 <style>
   .pageContainer {
