@@ -136,6 +136,7 @@
 
         analysis = annotations
           .filter((i) => !i.contentsObj.str.startsWith("#techpdf"))
+          .filter((i) => i.subtype.toLowerCase() != "Popup".toLowerCase())
           .map((i) => {
             return {
               str: i.contentsObj.str,
