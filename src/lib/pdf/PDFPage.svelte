@@ -12,6 +12,8 @@
 
   let canvas;
 
+  let outputScale;
+
   const doRender = () => {
     if (canvas) {
       console.log("doing render");
@@ -20,7 +22,7 @@
       const scale = 1.5;
       const viewport = page.getViewport({ scale: scale });
       // Support HiDPI-screens.
-      const outputScale = window.devicePixelRatio || 1;
+      //const outputScale = window.devicePixelRatio || 1;
 
       canvas.width = Math.floor(viewport.width * outputScale);
       canvas.height = Math.floor(viewport.height * outputScale);
@@ -45,6 +47,7 @@
   doRenderCallback(doRender);
 
   onMount(() => {
+    outputScale = window.devicePixelRatio || 1;
     doRender();
   });
 </script>

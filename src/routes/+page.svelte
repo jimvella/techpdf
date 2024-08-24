@@ -148,13 +148,23 @@
             };
           });
 
+        const s =
+          "Bowser\n\r#r1 200 rgb(255,0,0,0.2)\n\r#r2 300 rgb(0,255,0,0.2)";
+        console.log(
+          "split",
+          s.split(/\r?\n/).flatMap((j) => j.split(" "))
+        );
+
         categories = [
           ...new Set(
             annotations
               .filter((i) => !i.contentsObj.str.startsWith("#techpdf"))
               .map((i) => i.contentsObj.str)
               .filter((i) => i.includes("#"))
-              .flatMap((i) => i.split(" "))
+              .flatMap((i) => {
+                const r = i.split(/\s+/);
+                return r;
+              })
               .filter((i) => i.startsWith("#"))
               .map((i) => i.replace("#", ""))
           ),
@@ -309,7 +319,7 @@ page <input type="number" bind:value={pageNumber} />
                 console.log("element", element);
 
                 const spec = element.str
-                  .substring(element.str.indexOf("#"))
+                  .substring(element.str.indexOf("#" + category))
                   .split(" ");
                 console.log("spec", spec);
 
