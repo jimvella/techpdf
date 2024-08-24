@@ -145,6 +145,7 @@
                 referenceVectors
               ),
               rect: i.rect,
+              subtype: i.subtype,
             };
           });
 
@@ -323,23 +324,44 @@ page <input type="number" bind:value={pageNumber} />
                   .split(" ");
                 console.log("spec", spec);
 
-                const w = element.rect[2] - element.rect[0];
-                const h = element.rect[1] - element.rect[3];
-                const r = Math.max(w, h) / 2;
-                const rm = (r / pdfDistance) * actualDistance;
+                if (element.subtype == "Circle") {
+                  const w = element.rect[2] - element.rect[0];
+                  const h = element.rect[1] - element.rect[3];
+                  const r = Math.max(w, h) / 2;
+                  const rm = (r / pdfDistance) * actualDistance;
 
-                let x = pdfToCanvasCoords(element.rect);
+                  let x = pdfToCanvasCoords(element.rect);
 
-                context.beginPath();
-                context.arc(
-                  (x[0] + x[2]) / 2,
-                  (x[1] + x[3]) / 2,
-                  ((rm + Number(spec[1])) / actualDistance) * canvasDistance,
-                  0,
-                  2 * Math.PI
-                );
-                context.fillStyle = spec[2];
-                context.fill();
+                  // context.lineWidth =
+                  //   Number(spec[1]) / actualDistance + canvasDistance;
+
+                  context.beginPath();
+                  context.arc(
+                    (x[0] + x[2]) / 2,
+                    (x[1] + x[3]) / 2,
+                    ((rm + Number(spec[1])) / actualDistance) * canvasDistance,
+                    0,
+                    2 * Math.PI
+                  );
+                  context.fillStyle = spec[2];
+                  context.fill();
+                } else {
+                  let x = pdfToCanvasCoords(element.rect);
+
+                  const margin =
+                    (Number(spec[1]) / actualDistance) * canvasDistance;
+
+                  console.log("margin", margin);
+                  const w = x[2] - x[0] + margin + margin;
+                  const h = x[3] - x[1] - margin - margin;
+                  console.log("margin", {
+                    margin: margin,
+                    w: w,
+                    h: h,
+                  });
+                  context.fillStyle = spec[2];
+                  context.fillRect(x[0] - margin, x[1] + margin, w, h);
+                }
               });
           }
         });
