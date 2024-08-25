@@ -47,6 +47,7 @@
   doRenderCallback(doRender);
 
   onMount(() => {
+    console.log("onMount");
     // eval once to avoid weird resizing when zoomed
     outputScale = window.devicePixelRatio || 1;
     doRender();

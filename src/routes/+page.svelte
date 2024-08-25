@@ -1,5 +1,6 @@
 <script lang="ts">
   import PDFPage from "$lib/pdf/PDFPage.svelte";
+  import { AnnotationFactory, AnnotationIcon } from "annotpdf";
 
   // @ts-nocheck
   import * as pdfjs from "pdfjs-dist";
@@ -12,6 +13,7 @@
   let pageNumber = 1;
   let fitToPage = true;
   let page;
+  let fileName = "";
 
   let reference;
 
@@ -19,6 +21,9 @@
 
   //let selected = undefined;
   let selected = undefined;
+  let selectedRectText = "";
+  let selectedProjectedDimentions = "";
+
   let analysis = [];
 
   let categories = [];
@@ -110,73 +115,134 @@
     return [(rect[0] + rect[2]) / 2, (rect[1] + rect[3]) / 2];
   };
 
-  $: {
-    if (pages && pages[pageNumber - 1]) {
-      pages[pageNumber - 1].getAnnotations().then((annotations) => {
-        console.log("page annotations", annotations);
+  const dimentions = (rect) => {
+    const xy = interpolateFromTriangle(
+      [rect[0], rect[1]],
+      reference.points,
+      reference.vectors
+    );
 
-        const referencePoints = annotations
-          .filter((i) => i.contentsObj.str.startsWith("#techpdf"))
-          .map((i) => [i.rect[0], i.rect[1]]);
-        //console.log("reference points", referencePoints);
+    const x1y1 = interpolateFromTriangle(
+      [rect[2], rect[3]],
+      reference.points,
+      reference.vectors
+    );
 
-        const referenceVectors = annotations
-          .filter((i) => i.contentsObj.str.startsWith("#techpdf"))
-          .map((i) =>
-            i.contentsObj.str
-              .replace("#techpdf", "")
-              .split(",")
-              .map((j) => Number(j))
-          );
+    const x1y = interpolateFromTriangle(
+      [rect[2], rect[1]],
+      reference.points,
+      reference.vectors
+    );
 
-        reference = {
-          points: referencePoints,
-          vectors: referenceVectors,
-        };
+    return [dist(xy, x1y), dist(x1y, x1y1)];
+  };
 
-        analysis = annotations
-          .filter((i) => !i.contentsObj.str.startsWith("#techpdf"))
-          .filter((i) => i.subtype.toLowerCase() != "Popup".toLowerCase())
-          .map((i) => {
-            return {
-              str: i.contentsObj.str,
-              pos: interpolateFromTriangle(
-                centerOfRect(i.rect),
-                referencePoints,
-                referenceVectors
-              ),
-              rect: i.rect,
-              subtype: i.subtype,
+  // $: {
+  //   if (pages && pages[pageNumber - 1]) {
+  //   }
+  // }
+
+  const load: (typedarray: Uint8Array) => Promise<any> = (typedarray) => {
+    const loadingTask = pdfjs.getDocument(typedarray);
+    return new Promise((resolve, reject) => {
+      loadingTask.promise.then(function (i) {
+        pdf = i;
+
+        Promise.all(
+          Array(pdf._pdfInfo.numPages)
+            .fill()
+            .map((item, index) => {
+              const pageNumber = index + 1;
+              return pdf.getPage(pageNumber);
+            })
+        ).then((i) => {
+          pages = i;
+
+          pages[pageNumber - 1].getAnnotations().then((annotations) => {
+            console.log("page annotations", annotations);
+
+            const referencePoints = annotations
+              .filter((i) => i.contentsObj.str.startsWith("#techpdf"))
+              .map((i) => [i.rect[0], i.rect[1]]);
+            //console.log("reference points", referencePoints);
+
+            const referenceVectors = annotations
+              .filter((i) => i.contentsObj.str.startsWith("#techpdf"))
+              .map((i) =>
+                i.contentsObj.str
+                  .replace("#techpdf", "")
+                  .split(",")
+                  .map((j) => Number(j))
+              );
+
+            reference = {
+              points: referencePoints,
+              vectors: referenceVectors,
             };
-          });
 
-        const s =
-          "Bowser\n\r#r1 200 rgb(255,0,0,0.2)\n\r#r2 300 rgb(0,255,0,0.2)";
-        console.log(
-          "split",
-          s.split(/\r?\n/).flatMap((j) => j.split(" "))
-        );
+            // For editing
+            // https://github.com/highkite/pdfAnnotate
 
-        categories = [
-          ...new Set(
-            annotations
+            analysis = annotations
               .filter((i) => !i.contentsObj.str.startsWith("#techpdf"))
-              .map((i) => i.contentsObj.str)
-              .filter((i) => i.includes("#"))
-              .flatMap((i) => {
-                const r = i.split(/\s+/);
-                return r;
-              })
-              .filter((i) => i.startsWith("#"))
-              .map((i) => i.replace("#", ""))
-          ),
-        ];
+              .filter((i) => i.subtype.toLowerCase() != "Popup".toLowerCase())
+              .map((i) => {
+                return {
+                  str: i.contentsObj.str,
+                  pos: interpolateFromTriangle(
+                    centerOfRect(i.rect),
+                    referencePoints,
+                    referenceVectors
+                  ),
+                  rect: i.rect,
+                  subtype: i.subtype,
+                  annotation: i,
+                };
+              });
 
-        // defer rendering untill we have annotations
-        page = pages[pageNumber - 1];
+            categories = [
+              ...new Set(
+                annotations
+                  .filter((i) => !i.contentsObj.str.startsWith("#techpdf"))
+                  .map((i) => i.contentsObj.str)
+                  .filter((i) => i.includes("#"))
+                  .flatMap((i) => {
+                    const r = i.split(/\s+/);
+                    return r;
+                  })
+                  .filter((i) => i.startsWith("#"))
+                  .map((i) => i.replace("#", ""))
+              ),
+            ];
+
+            // defer rendering untill we have annotations
+            page = pages[pageNumber - 1];
+
+            resolve(null);
+          });
+        });
       });
-    }
-  }
+    });
+  };
+
+  const downloadURL = (data, fileName) => {
+    const a = document.createElement("a");
+    a.href = data;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.style.display = "none";
+    a.click();
+    a.remove();
+  };
+
+  const downloadBlob = (data, fileName, mimeType) => {
+    const blob = new Blob([data], {
+      type: mimeType,
+    });
+    const url = window.URL.createObjectURL(blob);
+    downloadURL(url, fileName);
+    setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+  };
 
   $: {
     console.log("categories", categories);
@@ -190,6 +256,15 @@
   $: {
     console.log("analysis", analysis);
   }
+
+  $: {
+    if (selected) {
+      const rect = selectedRectText.split(",").map((i) => Number(i));
+      selectedProjectedDimentions = dimentions(rect)
+        .map((i) => +i.toPrecision(3) + "m")
+        .join(" x ");
+    }
+  }
 </script>
 
 <svelte:head>
@@ -202,33 +277,41 @@
     >https://github.com/jimvella/techpdf</a
   >
 </div>
-
+<!-- <div>
+  <button
+    on:click={() => {
+      console.log("Test");
+      pdf.getData().then((data) => {
+        let pdfFactory = new AnnotationFactory(data);
+        pdfFactory.createCircleAnnotation({
+          page: 0,
+          rect: [
+            88.70719 + 100,
+            511.8047 + 100,
+            120.1761 + 100,
+            526.1814 + 100,
+          ],
+          contents: "Test circle",
+          author: "Max",
+          color: { r: 0, g: 255, b: 0 },
+          //opacity: 0.5,
+        });
+        load(pdfFactory.write()).then(() => {
+          console.log("loaded");
+          doRender();
+        });
+      });
+    }}>Test</button
+  >
+</div> -->
 <input
   type="file"
   on:change={(e) => {
     let file = e.target.files[0];
+    fileName = file.name;
     let fileReader = new FileReader();
     fileReader.onload = function () {
-      let typedarray = new Uint8Array(this.result);
-
-      const loadingTask = pdfjs.getDocument(typedarray);
-      loadingTask.promise.then(function (i) {
-        pdf = i;
-        console.log("pdf", pdf);
-
-        pdf.getData().then((i) => {
-          console.log("data", i);
-        });
-
-        Promise.all(
-          Array(pdf._pdfInfo.numPages)
-            .fill()
-            .map((item, index) => {
-              const pageNumber = index + 1;
-              return pdf.getPage(pageNumber);
-            })
-        ).then((i) => (pages = i));
-      });
+      load(new Uint8Array(this.result));
     };
     //Step 3:Read the file as ArrayBuffer
     fileReader.readAsArrayBuffer(file);
@@ -239,6 +322,13 @@ page <input type="number" bind:value={pageNumber} />
   >Full Size</button
 ><button disabled={fitToPage} on:click={() => (fitToPage = true)}
   >Fit to page</button
+>
+<button
+  on:click={() => {
+    pdf.getData().then((data) => {
+      downloadBlob(data, fileName, "application/pdf");
+    });
+  }}>Download</button
 >
 
 {#if page}
@@ -366,6 +456,17 @@ page <input type="number" bind:value={pageNumber} />
               });
           }
         });
+
+        // Draw selection edit
+        if (selected) {
+          console.log("Draw selected edit");
+          const rect = selectedRectText.split(",").map((i) => Number(i));
+
+          let x = pdfToCanvasCoords(rect);
+          context.strokeStyle = "rgb(255,0,255,0.5)";
+          context.lineWidth = 10;
+          context.strokeRect(x[0], x[1], x[2] - x[0], x[3] - x[1]);
+        }
       }}
       doRenderCallback={(f) => (doRender = f)}
     />
@@ -396,27 +497,110 @@ page <input type="number" bind:value={pageNumber} />
     }}
   />
 </div>
-<table>
-  <tr><th>Description</th><th>Position</th></tr>
-  {#each analysis as i, index}
-    <tr
-      on:click={() => {
-        if (selected == index) {
-          selected = undefined;
-        } else {
-          selected = index;
-        }
-        doRender();
-      }}
-      style={selected != undefined && selected == index
-        ? "background-color: orange"
-        : ""}
-    >
-      <td>{i.str}</td>
-      <td>{i.pos.join(", ")}</td>
-    </tr>
-  {/each}
-</table>
+
+<div style="display: flex;">
+  <div>
+    <table>
+      <tr><th>Description</th><th>Position</th></tr>
+      {#each analysis as i, index}
+        <tr
+          on:click={() => {
+            if (selected == index) {
+              selected = undefined;
+            } else {
+              selected = index;
+              selectedRectText = analysis[selected].rect.join(", ");
+            }
+            doRender();
+          }}
+          style={selected != undefined && selected == index
+            ? "background-color: orange"
+            : ""}
+        >
+          <td>{i.str}</td>
+          <td>{i.pos.join(", ")}</td>
+        </tr>
+      {/each}
+    </table>
+  </div>
+  <div style="width: 100%; background-color:lightgray">
+    {#if selected}
+      {analysis[selected].rect}
+      <br />
+      {dimentions(analysis[selected].rect)
+        .map((i) => +i.toPrecision(3) + "m")
+        .join(" x ")}
+
+      <div>
+        rect <input
+          type="text"
+          style="width: 100%; box-sizing: border-box"
+          bind:value={selectedRectText}
+          on:input={() => {
+            doRender();
+          }}
+        />
+      </div>
+      <div>
+        Projected: {selectedProjectedDimentions}
+      </div>
+      <div>
+        <button
+          on:click={() => {
+            pdf.getData().then((data) => {
+              let pdfFactory = new AnnotationFactory(data);
+
+              if (analysis[selected].annotation.subtype == "Square") {
+                pdfFactory.createSquareAnnotation({
+                  page: pageNumber - 1,
+                  rect: selectedRectText.split(",").map((i) => Number(i)),
+                  contents: analysis[selected].annotation.contentsObj.str,
+                  author: "techpdf",
+                  color: {
+                    r: analysis[selected].annotation.color[0],
+                    g: analysis[selected].annotation.color[1],
+                    b: analysis[selected].annotation.color[2],
+                  },
+                  //opacity: 0.5,
+                });
+              } else {
+                pdfFactory.createCircleAnnotation({
+                  page: pageNumber - 1,
+                  rect: selectedRectText.split(",").map((i) => Number(i)),
+                  contents: analysis[selected].annotation.contentsObj.str,
+                  author: "techpdf",
+                  color: {
+                    r: analysis[selected].annotation.color[0],
+                    g: analysis[selected].annotation.color[1],
+                    b: analysis[selected].annotation.color[2],
+                  },
+                });
+              }
+
+              load(pdfFactory.write()).then(() => {
+                console.log("loaded");
+                doRender();
+              });
+
+              // For the deletion ids to line up - need to refactor in terms of the pdfAnnotate library
+              // https://github.com/highkite/pdfAnnotate
+              // pdfFactory.getAnnotations().then((i) => {
+              //   console.log("factory annotations", i);
+              // });
+
+              // pdfFactory
+              //   .deleteAnnotation(analysis[selected].annotation.id)
+              //   .then(() => {
+              //     console.log("deleted");
+
+              //   });
+            });
+          }}>Update</button
+        >
+      </div>
+    {/if}
+  </div>
+</div>
 
 <style>
   section {

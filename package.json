@@ -22,6 +22,7 @@
   },
   "type": "module",
   "dependencies": {
+    "annotpdf": "^1.0.15",
     "pdfjs-dist": "^4.4.168"
   }
 }
