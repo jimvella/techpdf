@@ -408,12 +408,9 @@ page <input type="number" bind:value={pageNumber} />
             analysis
               .filter((i) => i.str.includes("#" + category + " "))
               .forEach((element) => {
-                console.log("element", element);
-
                 const spec = element.str
                   .substring(element.str.indexOf("#" + category))
-                  .split(" ");
-                console.log("spec", spec);
+                  .split(/\s+/);
 
                 if (element.subtype == "Circle") {
                   const w = element.rect[2] - element.rect[0];
@@ -435,6 +432,7 @@ page <input type="number" bind:value={pageNumber} />
                     2 * Math.PI
                   );
                   context.fillStyle = spec[2];
+
                   context.fill();
                 } else {
                   let x = pdfToCanvasCoords(element.rect);
@@ -442,15 +440,11 @@ page <input type="number" bind:value={pageNumber} />
                   const margin =
                     (Number(spec[1]) / actualDistance) * canvasDistance;
 
-                  console.log("margin", margin);
                   const w = x[2] - x[0] + margin + margin;
                   const h = x[3] - x[1] - margin - margin;
-                  console.log("margin", {
-                    margin: margin,
-                    w: w,
-                    h: h,
-                  });
+
                   context.fillStyle = spec[2];
+                  console.log("fillStyle", spec[2]);
                   context.fillRect(x[0] - margin, x[1] + margin, w, h);
                 }
               });
